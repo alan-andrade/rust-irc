@@ -5,12 +5,12 @@ use std::io::stdio::{stdin, stdout};
 
 fn main () {
     let mut stream = TcpStream::connect("irc.freenode.net", 6667).unwrap();
-
     let stream_a = stream.clone();
-    let stream_b = stream.clone();
+
+    let mut irc = Irc::new(&mut stream);
 
     spawn(proc() {
-        let mut stream = stream_b;
+        let mut stream = stream_a;
 
         stream.write_line("USER rust-irc 0 * :Rust irc");
         stream.write_line("NICK rust-irc");
@@ -23,14 +23,47 @@ fn main () {
         }
     });
 
+    for msg in irc.message_stream() {
+        println!("{}", msg.content);
+    }
+}
 
-    let mut parser = Parser::new();
+struct Message {
+    content: String
+}
 
-    for byte in stream.bytes() {
-        match byte {
-            Ok(b) => { parser.parse(&(b as char)); }
-            Err(e) => { stdout().write_str(e.desc); }
+struct MessageIterator<'a, T> {
+    stream: &'a mut T
+}
+
+impl<'a, T: Reader> Iterator<Message> for MessageIterator<'a, T> {
+    fn next (&mut self) -> Option<Message> {
+        let mut msg = Message { content: String::new() };
+
+        loop {
+            let byte = self.stream.read_byte().unwrap() as char;
+
+            match byte {
+                '\n' => { break }
+                _ => { msg.content.push_char(byte) }
+            }
         }
+
+        Some(msg)
+    }
+}
+
+struct Irc<'a, T> {
+    stream: &'a mut T
+}
+
+impl<'a, T: Reader> Irc<'a, T> {
+    fn new (stream: &'a mut T) -> Irc<'a, T> {
+        Irc { stream: stream }
+    }
+
+    fn message_stream<'a>(&'a mut self) -> MessageIterator<'a, T> {
+        MessageIterator { stream: self.stream }
     }
 }
 
