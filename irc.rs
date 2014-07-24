@@ -24,28 +24,68 @@ fn main () {
     });
 
     for msg in irc.message_stream() {
-        println!("{}", msg.content);
+        println!("{}", msg.prefix);
     }
 }
 
 struct Message {
-    content: String
+    content: String,
+    prefix: String
+}
+
+impl Message {
+    fn new () -> Message {
+        Message {
+            content: String::new(),
+            prefix: String::new()
+        }
+    }
 }
 
 struct MessageIterator<'a, T> {
     stream: &'a mut T
 }
 
+// Message format in Augmented BNF.
+//
+// message    =  [ ":" prefix SPACE ] command [ params ] crlf
+//
+// prefix     =  servername / ( nickname [ [ "!" user ] "@" host ] )
+// command    =  1*letter / 3digit
+// params     =  *14( SPACE middle ) [ SPACE ":" trailing ]
+//            =/ 14( SPACE middle ) [ SPACE [ ":" ] trailing ]
+//
+// nospcrlfcl =  %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
+//            ; any octet except NUL, CR, LF, " " and ":"
+// middle     =  nospcrlfcl *( ":" / nospcrlfcl )
+// trailing   =  *( ":" / " " / nospcrlfcl )
+//
+// SPACE      =  %x20        ; space character
+// crlf       =  %x0D %x0A   ; "carriage return" "linefeed"
+
 impl<'a, T: Reader> Iterator<Message> for MessageIterator<'a, T> {
     fn next (&mut self) -> Option<Message> {
-        let mut msg = Message { content: String::new() };
+        let mut msg = Message::new();
+        let mut is_prefix = false;
 
         loop {
             let byte = self.stream.read_byte().unwrap() as char;
+            // Fixme. figure out a better way and stop using unwrap
 
             match byte {
                 '\n' => { break }
-                _ => { msg.content.push_char(byte) }
+                ':' => {
+                    msg.prefix.push_char(byte);
+                    is_prefix = !is_prefix;
+                    continue;
+                }
+                _ => {
+                    if is_prefix {
+                        msg.prefix.push_char(byte);
+                    } else {
+                        msg.content.push_char(byte);
+                    }
+                }
             }
         }
 
@@ -66,69 +106,3 @@ impl<'a, T: Reader> Irc<'a, T> {
         MessageIterator { stream: self.stream }
     }
 }
-
-pub struct Parser {
-    space_found: bool,
-    is_message: bool
-}
-
-impl Parser {
-    fn new () -> Parser {
-        Parser {
-            space_found: false,
-            is_message: false
-        }
-    }
-
-    fn parse (&mut self, letter: &char) {
-        match *letter {
-            ' ' => {
-                self.space_found = true;
-                if self.is_message {
-                    stdout().write_char(*letter);
-                }
-            }
-
-            ':' => {
-                if self.space_found {
-                    self.is_message = true;
-                }
-                if self.is_message {
-                    stdout().write_char(*letter);
-                }
-            }
-
-            '\n' => {
-                if self.is_message {
-                    stdout().write_char(*letter);
-                }
-                self.space_found = false;
-                self.is_message = false;
-            }
-
-            _ => {
-                if self.is_message {
-                    stdout().write_char(*letter);
-                }
-            }
-
-        }
-    }
-}
-
-// Message format in Augmented BNF.
-//
-// message    =  [ ":" prefix SPACE ] command [ params ] crlf
-//
-// prefix     =  servername / ( nickname [ [ "!" user ] "@" host ] )
-// command    =  1*letter / 3digit
-// params     =  *14( SPACE middle ) [ SPACE ":" trailing ]
-//            =/ 14( SPACE middle ) [ SPACE [ ":" ] trailing ]
-//
-// nospcrlfcl =  %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
-//            ; any octet except NUL, CR, LF, " " and ":"
-// middle     =  nospcrlfcl *( ":" / nospcrlfcl )
-// trailing   =  *( ":" / " " / nospcrlfcl )
-//
-// SPACE      =  %x20        ; space character
-// crlf       =  %x0D %x0A   ; "carriage return" "linefeed"
