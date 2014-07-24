@@ -64,7 +64,9 @@ impl<'a, I: Iterator<char>> Parser<'a, I> {
         }
     }
 
-    fn parse (&self, c: char) {
+    fn parse (&mut self) {
+        let c = self.iter.next().unwrap();
+
         match self.current_state {
             Start => {
                 match c {
@@ -82,7 +84,8 @@ impl<'a, I: Iterator<char>> Parser<'a, I> {
 fn test_state_machine () {
     let msg = "COMMAND\n";
     let mut chars = msg.chars();
-    let parser = Parser::new(&mut chars);
+    let mut parser = Parser::new(&mut chars);
+    parser.parse();
 }
 
 // Message format in Augmented BNF.
