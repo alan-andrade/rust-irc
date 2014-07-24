@@ -46,7 +46,48 @@ struct MessageIterator<'a, T> {
     stream: &'a mut T
 }
 
+enum State {
+    Start,
+    Command
+}
+
+struct Parser<'a, I> {
+    current_state: State,
+    iter: &'a mut I
+}
+
+impl<'a, I: Iterator<char>> Parser<'a, I> {
+    fn new(iter: &'a mut I) -> Parser<'a, I> {
+        Parser {
+            current_state: Start,
+            iter: iter
+        }
+    }
+
+    fn parse (&self, c: char) {
+        match self.current_state {
+            Start => {
+                match c {
+                    'a'..'z' | 'A'..'Z' => { }
+                    '0'..'9' => { }
+                    _ => {}
+                }
+            }
+            Command => {}
+        }
+    }
+}
+
+#[test]
+fn test_state_machine () {
+    let msg = "COMMAND\n";
+    let mut chars = msg.chars();
+    let parser = Parser::new(&mut chars);
+}
+
 // Message format in Augmented BNF.
+//
+// command crlf
 //
 // message    =  [ ":" prefix SPACE ] command [ params ] crlf
 //
