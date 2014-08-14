@@ -1,2 +1,2 @@
 test:
-	rustc --test parser.rs && ./parser
+	rustc -g --test parser.rs && ./parser

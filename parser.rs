@@ -42,10 +42,6 @@ impl<'i, I: Iterator<char>> Parser<'i, I> {
         self.ch == None
     }
 
-    fn eol(&mut self) -> bool {
-        self.ch == Some('\n')
-    }
-
     fn parse_prefix(&mut self) -> Option<String> {
         let mut prefix = String::new();
 
@@ -70,7 +66,8 @@ impl<'i, I: Iterator<char>> Parser<'i, I> {
             }
 
             Command => {
-                while !self.is_ch(' ') {
+                loop {
+                    if self.is_ch(' ') { break; }
                     command.push_char(self.ch.unwrap());
                     self.bump();
                 }
@@ -85,10 +82,9 @@ impl<'i, I: Iterator<char>> Parser<'i, I> {
     fn parse_params(&mut self) -> Option<String> {
         let mut params = String::new();
 
-        while !self.is_ch(':') {
-            if !self.is_ch(' ') {
-                params.push_char(self.ch.unwrap());
-            }
+        loop {
+            if self.is_ch(' ') { break; }
+            params.push_char(self.ch.unwrap());
             self.bump();
         }
 
@@ -98,8 +94,12 @@ impl<'i, I: Iterator<char>> Parser<'i, I> {
     fn parse_message(&mut self) -> Option<String> {
         let mut msg = String::new();
 
-        while !self.eol() {
+        self.bump(); // Skip the :
+
+        loop {
+            if self.is_ch('\n') { break; }
             msg.push_char(self.ch_or_null());
+            self.bump();
         }
 
         Some(msg)
@@ -119,7 +119,7 @@ impl<'i, I: Iterator<char>> Iterator<String> for Parser<'i, I> {
                     }
 
                     Params => {
-                        self.state = Start;
+                        self.state = Message;
                         self.parse_message()
                     }
 
@@ -146,17 +146,22 @@ impl<'i, I: Iterator<char>> Iterator<String> for Parser<'i, I> {
 
 #[cfg(test)]
 mod test {
-    use super::{Parser, Command, Prefix, Params};
+    use super::Parser;
 
     #[test]
     fn test_commands() {
-        let mut chars = ":Angel!wings@irc.org PRIVMSG Wiz :Are you receiving this message ?".chars();
+        let mut example = String::new();
+        example.push_str(":Angel!wings@irc.org PRIVMSG Wiz :Are you receiving this message ?\n");
+        example.push_str("PING :irc.funet.fi\n");
+        let mut chars = example.as_slice().clone().chars();
         let mut parser = Parser::new(&mut chars);
+
         assert_eq!(parser.next(), Some("Angel!wings@irc.org".to_string()));
-        assert_eq!(parser.state, Prefix);
         assert_eq!(parser.next(), Some("PRIVMSG".to_string()));
-        assert_eq!(parser.state, Command);
         assert_eq!(parser.next(), Some("Wiz".to_string()));
-        assert_eq!(parser.state, Params);
+        assert_eq!(parser.next(), Some("Are you receiving this message ?".to_string()));
+        assert_eq!(parser.next(), Some("PING".to_string()));
+        assert_eq!(parser.next(), Some("irc.funet.fi".to_string()));
+        assert_eq!(parser.next(), None);
     }
 }
