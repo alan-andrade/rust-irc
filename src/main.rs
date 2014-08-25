@@ -6,13 +6,13 @@ use std::io::net::tcp::TcpStream;
 use std::io::stdio::{stdin, stdout};
 use std::io::{Buffer, BufferedReader};
 
-mod Parser;
+mod parser;
 
 fn main () {
     let stream = TcpStream::connect("irc.freenode.net", 6667).unwrap();
     let stream_a = stream.clone();
     let mut stream = BufferedReader::new(stream);
-    let mut parser = Parser::Parser::new(&mut stream);
+    let mut parser = parser::Parser::new(&mut stream);
 
     spawn(proc() {
         let mut stream = stream_a;
@@ -31,7 +31,7 @@ fn main () {
     loop {
         for c in parser {
             match c {
-                (Parser::Message, msg) => { println!("{}", msg); }
+                (parser::Message, msg) => { println!("{}", msg); }
                 _ => { }
             }
         }
