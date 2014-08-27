@@ -2,25 +2,32 @@
 //
 #![feature(macro_rules)]
 
-pub struct Parser<'i, I> {
-    reader: &'i mut I,
-    state: ParserState,
+pub struct Parser<I> {
+    reader: Box<I>,
+    state: State,
     ch: Option<char>
 }
 
+pub struct Message {
+    prefix: String,
+    command: String,
+    params: String,
+    body: String
+}
+
 #[deriving(PartialEq, Show, Clone)]
-pub enum ParserState {
+pub enum State {
     Start,
     Prefix,
     Command,
     Params,
-    Message
+    Body
 }
 
-pub type Token = (ParserState, String);
+pub type Token = (State, String);
 
-impl<'i, I: Buffer> Parser<'i, I> {
-    pub fn new(rdr: &'i mut I) -> Parser<'i, I> {
+impl<I: Buffer> Parser<I> {
+    pub fn new(rdr: Box<I>) -> Parser<I> {
         Parser {
             reader: rdr,
             ch: Some('\x00'),
@@ -97,11 +104,15 @@ impl<'i, I: Buffer> Parser<'i, I> {
             msg.push_char(self.ch_or_null());
         }
 
-        (Message, msg)
+        (Body, msg)
+    }
+
+    fn messages<'a>(&'a mut self) -> MessageIterator<'a, I> {
+        MessageIterator { parser: self }
     }
 }
 
-impl<'i, I: Buffer> Iterator<Token> for Parser<'i, I> {
+impl<I: Buffer> Iterator<Token> for Parser<I> {
     fn next(&mut self) -> Option<Token> {
         self.bump();
 
@@ -119,7 +130,7 @@ impl<'i, I: Buffer> Iterator<Token> for Parser<'i, I> {
             c @ 'a'..'z' |
             c @ '0'..'9' => {
                 match self.state {
-                    Prefix | Start | Message => { self.parse_command(c.is_digit()) }
+                    Prefix | Start | Body=> { self.parse_command(c.is_digit()) }
                     _ => { self.parse_params() }
                 }
             }
@@ -128,17 +139,48 @@ impl<'i, I: Buffer> Iterator<Token> for Parser<'i, I> {
 
         };
 
-        self.state = token.ref0().clone();
+        self.state = token.ref0().clone(); // TODO: Why do I have to clone?
 
         Some(token)
+    }
+}
+
+struct MessageIterator<'a, I> {
+    parser: &'a mut Parser<I>
+}
+
+impl<'a, I: Buffer> Iterator<Message> for MessageIterator<'a, I> {
+    fn next(&mut self) -> Option<Message> {
+        let mut msg = Message {
+            prefix: String::new(),
+            command: String::new(),
+            params: String::new(),
+            body: String::new()
+        };
+
+        let mut token = self.parser.next();
+
+        while token.is_some() {
+            let (c, s) = token.unwrap();
+            match c {
+                Prefix => { msg.prefix = s }
+                Command => { msg.command = s }
+                Params => { msg.params = s }
+                Body => { msg.body = s; break; }
+                _ => { break; }
+            }
+
+            token = self.parser.next();
+        }
+
+        Some(msg)
     }
 }
 
 #[cfg(test)]
 mod test {
 
-    use super::Parser;
-    use super::{Prefix, Command, Params, Message};
+    use super::{Parser, Message, Prefix, Command, Params,Body};
     use std::io::BufReader;
 
     #[test]
@@ -153,14 +195,27 @@ mod test {
         example.push_str(":Angel!wings@irc.org PRIVMSG Wiz :Are you receiving this message ?\r\n");
         example.push_str("PING :irc.funet.fi\r\n");
 
-        let mut buf = BufReader::new(example.as_bytes());
-        let mut parser = Parser::new(&mut buf);
+        let mut buf = box BufReader::new(example.as_bytes());
+        let mut parser = Parser::new(buf);
 
         test_token!(parser.next(), Prefix, "Angel!wings@irc.org");
         test_token!(parser.next(), Command, "PRIVMSG");
         test_token!(parser.next(), Params, "Wiz");
-        test_token!(parser.next(), Message, "Are you receiving this message ?");
+        test_token!(parser.next(), Body, "Are you receiving this message ?");
         test_token!(parser.next(), Command, "PING");
-        test_token!(parser.next(), Message, "irc.funet.fi");
+        test_token!(parser.next(), Body, "irc.funet.fi");
+    }
+
+    #[test]
+    fn test_by_message () {
+        let example = ":Angel PRIVMSG Wiz :Hello message ?\r\n";
+        let mut buf = box BufReader::new(example.as_bytes());
+        let mut parser = Parser::new(buf);
+        let msg = parser.messages().next().unwrap();
+
+        assert_eq!(msg.prefix, "Angel".to_string());
+        assert_eq!(msg.command, "PRIVMSG".to_string());
+        assert_eq!(msg.params, "Wiz".to_string());
+        assert_eq!(msg.body, "Hello message ?".to_string());
     }
 }

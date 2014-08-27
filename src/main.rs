@@ -11,8 +11,8 @@ mod parser;
 fn main () {
     let stream = TcpStream::connect("irc.freenode.net", 6667).unwrap();
     let stream_a = stream.clone();
-    let mut stream = BufferedReader::new(stream);
-    let mut parser = parser::Parser::new(&mut stream);
+    let mut stream = box BufferedReader::new(stream);
+    let mut parser = parser::Parser::new(stream);
 
     spawn(proc() {
         let mut stream = stream_a;
@@ -31,7 +31,7 @@ fn main () {
     loop {
         for c in parser {
             match c {
-                (parser::Message, msg) => { println!("{}", msg); }
+                (parser::Body, msg) => { println!("{}", msg); }
                 _ => { }
             }
         }
