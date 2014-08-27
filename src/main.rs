@@ -29,11 +29,9 @@ fn main () {
     });
 
     loop {
-        for c in parser {
-            match c {
-                (parser::Body, msg) => { println!("{}", msg); }
-                _ => { }
-            }
+        for m in parser.messages() {
+            stdout().write_str(m.prefix.as_slice());
+            stdout().write_str(m.body.as_slice());
         }
     }
 }

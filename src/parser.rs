@@ -9,10 +9,10 @@ pub struct Parser<I> {
 }
 
 pub struct Message {
-    prefix: String,
-    command: String,
-    params: String,
-    body: String
+    pub prefix: String,
+    pub command: String,
+    pub params: String,
+    pub body: String
 }
 
 #[deriving(PartialEq, Show, Clone)]
@@ -107,7 +107,7 @@ impl<I: Buffer> Parser<I> {
         (Body, msg)
     }
 
-    fn messages<'a>(&'a mut self) -> MessageIterator<'a, I> {
+    pub fn messages<'a>(&'a mut self) -> MessageIterator<'a, I> {
         MessageIterator { parser: self }
     }
 }
