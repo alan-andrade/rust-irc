@@ -165,7 +165,7 @@ impl<I: Buffer> Iterator<String> for Parser<I> {
     }
 }
 
-struct MessageIterator<'a, I> {
+struct MessageIterator<'a, I: 'a> {
     parser: &'a mut Parser<I>
 }
 
