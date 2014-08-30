@@ -1,7 +1,6 @@
 // Rust irc client
 #![feature(macro_rules)]
 
-extern crate debug;
 use std::io::net::tcp::TcpStream;
 use std::io::stdio::{stdin, stdout};
 use std::io::{Buffer, BufferedReader};
@@ -30,8 +29,7 @@ fn main () {
 
     loop {
         for m in parser.messages() {
-            stdout().write_str(m.prefix.as_slice());
-            stdout().write_str(m.body.as_slice());
+            writeln!(stdout(), "{} - {}", m.prefix, m.body);
         }
     }
 }

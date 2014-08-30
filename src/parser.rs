@@ -1,6 +1,5 @@
 // Irc Message Parser
 //
-#![feature(macro_rules)]
 
 pub struct Parser<I> {
     reader: Box<I>,
@@ -9,6 +8,7 @@ pub struct Parser<I> {
     buffer: String
 }
 
+#[deriving(Show)]
 pub struct Message {
     pub prefix:  String,
     pub command: String,
@@ -54,10 +54,12 @@ impl<I: Buffer> Parser<I> {
     fn parse_prefix(&mut self) {
         let mut prefix = String::new();
 
+        if self.is_ch(':') { self.bump(); }
+
         loop {
-            self.bump();
             if self.is_ch(' ') || self.eof() { break; }
             prefix.push_char(self.ch_or_null());
+            self.bump();
         }
 
         self.state = Prefix;
@@ -80,6 +82,7 @@ impl<I: Buffer> Parser<I> {
             }
         }
 
+
         self.state = Command;
         self.buffer.push_str(command.as_slice());
     }
@@ -97,18 +100,23 @@ impl<I: Buffer> Parser<I> {
         self.buffer.push_str(params.as_slice());
     }
 
-    fn parse_message(&mut self) {
-        let mut msg = String::new();
+    fn parse_body(&mut self) {
+        let mut body = String::new();
+
+        if self.is_ch(':') { self.bump(); }
 
         loop {
-            self.bump(); // Skip the : on the first iteration
-            if self.is_ch('\r') { continue; }
-            if self.is_ch('\n') { break; }
-            msg.push_char(self.ch_or_null());
+            match self.ch {
+                Some(c) => { if c.is_control() { break; } }
+                None => { break; }
+            }
+
+            body.push_char(self.ch_or_null());
+            self.bump();
         }
 
         self.state = Body;
-        self.buffer.push_str(msg.as_slice());
+        self.buffer.push_str(body.as_slice());
     }
 
     pub fn messages<'a>(&'a mut self) -> MessageIterator<'a, I> {
@@ -124,10 +132,10 @@ impl<I: Buffer> Iterator<String> for Parser<I> {
         match self.ch_or_null() {
             ':' => {
                 match self.state {
-                    Start   => { self.parse_prefix(); }
-                    Params  => { self.parse_message(); }
-                    Command => { self.parse_message(); }
-                    _ => { }
+                    Start | Body  => { self.parse_prefix(); }
+                    Params  => { self.parse_body(); }
+                    Command => { self.parse_body(); }
+                    _ => { return self.next(); }
                 }
             }
 
@@ -142,7 +150,15 @@ impl<I: Buffer> Iterator<String> for Parser<I> {
                 }
             }
 
-            _ => { }
+            c @ _ => {
+                match self.state {
+                    Command => { self.parse_params(); }
+                    _ => {
+                        self.state = Start;
+                        return self.next();
+                    }
+                }
+            }
         }
 
         Some(self.buffer.clone())
@@ -161,6 +177,7 @@ impl<'a, I: Buffer> Iterator<Message> for MessageIterator<'a, I> {
             params: String::new(),
             body: String::new()
         };
+
 
         let mut has_text = self.parser.next();
 
@@ -191,13 +208,14 @@ mod test {
     use super::{Parser, Message, Prefix, Command, Params,Body};
     use std::io::BufReader;
 
+    macro_rules! test_token(
+        ($next: expr, $string: expr) => (
+            assert_eq!($next, Some($string.to_string()));
+        )
+    )
+
     #[test]
     fn test_commands() {
-        macro_rules! test_token(
-            ($next: expr, $string: expr) => (
-                assert_eq!($next, Some($string.to_string()));
-            )
-        )
 
         let mut example = String::new();
         example.push_str(":Angel!wings@irc.org PRIVMSG Wiz :Are you receiving this message ?\r\n");
@@ -225,5 +243,17 @@ mod test {
         assert_eq!(msg.command, "PRIVMSG".to_string());
         assert_eq!(msg.params, "Wiz".to_string());
         assert_eq!(msg.body, "Hello message ?".to_string());
+    }
+
+    #[test]
+    fn test_handshake () {
+        let example = ":hobana.freenode.net NOTICE * :*** Looking up your hostname...";
+        let mut buf = box BufReader::new(example.as_bytes());
+        let mut parser = Parser::new(buf);
+
+        test_token!(parser.next(), "hobana.freenode.net");
+        test_token!(parser.next(), "NOTICE");
+        test_token!(parser.next(), "*");
+        test_token!(parser.next(), "*** Looking up your hostname...");
     }
 }
